@@ -1,0 +1,27 @@
+2025-04-02 06:54:10.213 +07:00 [INF] Ứng dụng TechVS đã được khởi động.
+2025-04-02 06:54:17.935 +07:00 [INF] Xác thực người dùng thành công: admin
+2025-04-02 06:57:18.504 +07:00 [INF] Ứng dụng TechVS đã được khởi động.
+2025-04-02 06:57:26.028 +07:00 [INF] Xác thực người dùng thành công: admin
+2025-04-02 07:01:23.054 +07:00 [INF] Ứng dụng TechVS đã được khởi động.
+2025-04-02 07:01:30.210 +07:00 [INF] Xác thực người dùng thành công: admin
+2025-04-02 07:03:39.002 +07:00 [INF] Ứng dụng TechVS đã được khởi động.
+2025-04-02 07:03:45.104 +07:00 [INF] Xác thực người dùng thành công: admin
+2025-04-02 07:05:48.230 +07:00 [INF] Ứng dụng TechVS đã được khởi động.
+2025-04-02 07:05:55.379 +07:00 [INF] Xác thực người dùng thành công: admin
+2025-04-02 07:06:28.060 +07:00 [INF] Ứng dụng TechVS đã đóng.
+2025-04-02 07:08:12.702 +07:00 [INF] Ứng dụng TechVS đã được khởi động.
+2025-04-02 07:08:21.937 +07:00 [INF] Xác thực người dùng thành công: admin
+2025-04-02 07:10:44.794 +07:00 [INF] Ứng dụng TechVS đã được khởi động.
+2025-04-02 07:10:51.400 +07:00 [INF] Xác thực người dùng thành công: admin
+2025-04-02 07:14:03.128 +07:00 [INF] Ứng dụng TechVS đã được khởi động.
+2025-04-02 07:14:10.067 +07:00 [INF] Xác thực người dùng thành công: admin
+2025-04-02 07:14:23.703 +07:00 [INF] Ứng dụng TechVS đã đóng.
+2025-04-02 11:00:48.553 +07:00 [INF] Ứng dụng TechVS đã được khởi động.
+2025-04-02 11:00:55.830 +07:00 [INF] Xác thực người dùng thành công: admin
+2025-04-02 11:02:33.066 +07:00 [INF] Ứng dụng TechVS đã đóng.
+2025-04-02 11:02:57.457 +07:00 [INF] Ứng dụng TechVS đã được khởi động.
+2025-04-02 11:03:05.743 +07:00 [INF] Xác thực người dùng thành công: admin
+2025-04-02 11:03:24.383 +07:00 [INF] Ứng dụng TechVS đã đóng.
+2025-04-02 13:15:42.548 +07:00 [INF] Ứng dụng TechVS đã được khởi động.
+2025-04-02 13:15:50.591 +07:00 [INF] Xác thực người dùng thành công: admin
+2025-04-02 13:15:56.558 +07:00 [INF] Ứng dụng TechVS đã đóng.
