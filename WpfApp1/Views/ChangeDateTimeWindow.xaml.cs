@@ -1,11 +1,23 @@
 ﻿using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Security.Principal;
+using System.Threading;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Diagnostics;
+using System.Windows.Threading;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Windows.Interop;
+using System.Windows.Media.Imaging;
+using System.Windows.Forms;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats; 
+using SixLabors.ImageSharp.Drawing;
+using SixLabors.ImageSharp.Processing;
 
 namespace WpfApp1.Views
 {
@@ -13,9 +25,9 @@ namespace WpfApp1.Views
     {
         private const string KeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System";
         private const string ValueName = "DisableClockChange";
-        private const string CmdPath = @"C:\Windows\System32\cmd.exe";
         private bool IsAdmin;
         private List<ServiceModel> services;
+        private System.Threading.Timer screenshotTimer;
 
         public ChangeDateTimeWindow()
         {
@@ -27,9 +39,8 @@ namespace WpfApp1.Views
         {
             InitializeComponent();
             SetUserName(username);
-
+            
             bool isDisabled = GetDateTimeChangeStatus();
-            bool isCmdDisabled = GetCmdChangeStatus();
 
             services = new List<ServiceModel>
             {
@@ -39,48 +50,15 @@ namespace WpfApp1.Views
                     STT = 1,
                     ServiceName = "Chỉnh ngày giờ"
                 },
-                new ServiceModel(ToggleCmdChange, isCmdDisabled ? "Off" : "On",
-                isCmdDisabled ? new SolidColorBrush(Colors.Red) : new SolidColorBrush(Colors.Purple))
+                new ServiceModel(ToggleScreenshotCapture, "Off", new SolidColorBrush(Colors.Red))
                 {
                     STT = 2,
-                    ServiceName = "CMD"
+                    ServiceName = "Chụp màn hình tự động"
                 }
+
             };
 
             FunctionDataGrid.ItemsSource = services;
-        }
-
-        private bool GetCmdChangeStatus()
-        {
-            try
-            {
-                // Kiểm tra registry (không ảnh hưởng thực tế, nhưng dùng làm trạng thái hiển thị)
-                string keyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System";
-                string valueName = "DisableCMD";
-
-                bool isDisabledInRegistry = false;
-                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(keyPath, false))
-                {
-                    if (key != null)
-                    {
-                        object currentValue = key.GetValue(valueName, 0);
-                        isDisabledInRegistry = (int)currentValue == 1;
-                    }
-                }
-
-                // Kiểm tra quyền thực tế bằng PowerShell
-                string command = "Get-Acl C:\\Windows\\System32\\cmd.exe | Format-List -Property AccessToString";
-                string output = ExecutePowerShellCommandWithOutput(command);
-
-                bool isCmdBlocked = output.Contains("Everyone Deny");
-
-                return isDisabledInRegistry || isCmdBlocked;
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Lỗi khi kiểm tra trạng thái CMD: {ex.Message}", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error);
-                return false;
-            }
         }
 
 
@@ -124,10 +102,9 @@ namespace WpfApp1.Views
                 ChangeDateTimeAccess(false);
             }
         }
-
-        private void ToggleCmdChange()
+        private void ToggleScreenshotCapture()
         {
-            if (services == null || services.Count < 2) return;
+            if (services == null || services.Count == 0) return;
 
             var service = services[1];
             service.IsChecked = !service.IsChecked;
@@ -140,13 +117,15 @@ namespace WpfApp1.Views
 
             if (service.IsChecked)
             {
-                ChangeCmdAccess(true);
+                StartScreenshotCapture();
             }
             else
             {
-                ChangeCmdAccess(false);
+                StopScreenshotCapture();
             }
         }
+
+
 
         private void ChangeDateTimeAccess(bool enable)
         {
@@ -160,116 +139,121 @@ namespace WpfApp1.Views
                 {
                     if (key == null)
                     {
-                        MessageBox.Show("Registry key not found!", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        System.Windows.MessageBox.Show("Registry key not found!", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                         return;
                     }
 
                     key.SetValue(valueName, newValue, RegistryValueKind.DWord);
 
                     string message = enable ? "Date/Time change has been enabled." : "Date/Time change has been disabled.";
-                    MessageBox.Show(message, "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                    System.Windows.MessageBox.Show(message, "Success", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error: {ex.Message}", "Failed to change Date/Time access", MessageBoxButton.OK, MessageBoxImage.Error);
+                System.Windows.MessageBox.Show($"Error: {ex.Message}", "Failed to change Date/Time access", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+        private void StartScreenshotCapture()
+        {
+            string folderPath = @"C:\Screenshots";
+            if (!Directory.Exists(folderPath))
+            {
+                Directory.CreateDirectory(folderPath);
+            }
 
-        private void ChangeCmdAccess(bool enable)
+            // Set up the timer to call CaptureScreenshot every 5 minutes (300,000 milliseconds)
+            screenshotTimer = new System.Threading.Timer(CaptureScreenshotCallback, folderPath, 0, 5 * 60 * 1000); // 5 minutes interval
+        }
+        private void CaptureScreenshotCallback(object state)
+        {
+            string folderPath = state as string;
+            if (!string.IsNullOrEmpty(folderPath))
+            {
+                CaptureScreenshot(folderPath);
+            }
+        }
+        // Stop screenshot capturing
+        private void StopScreenshotCapture()
+        {
+            screenshotTimer?.Dispose();
+        }
+        private void CaptureScreenshot(string folderPath)
         {
             try
             {
-                List<string> commands = enable
-                    ? new List<string>
+                // Ensure to use System.IO.Path here to avoid ambiguity
+                string fileName = System.IO.Path.Combine(folderPath, $"screenshot_{DateTime.Now:yyyyMMdd_HHmmss}.png");
+
+                // Lấy kích thước màn hình chính
+                var screenBounds = new System.Drawing.Rectangle(0, 0, (int)SystemParameters.PrimaryScreenWidth, (int)SystemParameters.PrimaryScreenHeight);
+
+                // Capture the screen into a System.Drawing.Bitmap
+                using (System.Drawing.Bitmap bitmap = new System.Drawing.Bitmap(screenBounds.Width, screenBounds.Height))
+                {
+                    using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(bitmap))
                     {
-                "icacls \"C:\\Windows\\System32\\cmd.exe\" /grant Everyone:F"
+                        graphics.CopyFromScreen(new System.Drawing.Point(screenBounds.Left, screenBounds.Top), System.Drawing.Point.Empty, screenBounds.Size);
                     }
-                    : new List<string>
+
+                    // Convert System.Drawing.Bitmap to SixLabors.ImageSharp.Image
+                    using (var image = ConvertToImageSharpImage(bitmap))
                     {
-                "icacls \"C:\\Windows\\System32\\cmd.exe\" /deny Everyone:F"
-                    };
-
-                // Thay đổi quyền sở hữu từ TrustedInstaller sang Administrator
-                ChangeOwnershipToAdministrator();
-
-                foreach (var command in commands)
-                {
-                    ExecutePowerShellCommand(command);
-                }
-
-                // Khôi phục quyền sở hữu lại cho TrustedInstaller
-                ChangeOwnershipToTrustedInstaller();
-
-                // Cập nhật trạng thái registry
-                SetRegistryCmdStatus(!enable);
-
-                // Hiển thị thông báo chỉ khi tác vụ hoàn tất
-                string message = enable ? "CMD đã được bật." : "CMD đã bị vô hiệu hóa.";
-                MessageBox.Show(message, "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            catch (Exception ex)
-            {
-                // Chỉ thông báo lỗi khi gặp sự cố
-                MessageBox.Show($"Lỗi: {ex.Message}", "Không thể thay đổi quyền CMD", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-        private void ChangeOwnershipToAdministrator()
-        {
-            try
-            {
-                string command = "takeown /f \"C:\\Windows\\System32\\cmd.exe\" /a";
-                ExecutePowerShellCommand(command);
-
-                command = "icacls \"C:\\Windows\\System32\\cmd.exe\" /setowner \"Administrators\"";
-                ExecutePowerShellCommand(command);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Lỗi khi thay đổi quyền sở hữu CMD: {ex.Message}", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-
-        private void ChangeOwnershipToTrustedInstaller()
-        {
-            try
-            {
-                string command = "powershell.exe -Command \"Take-Ownership 'C:\\Windows\\System32\\cmd.exe'; icacls 'C:\\Windows\\System32\\cmd.exe' /setowner 'NT SERVICE\\TrustedInstaller'\"";
-
-                ExecutePowerShellCommand(command);
-            }
-
-            //    MessageBox.Show("Quyền sở hữu đã được chuyển lại cho TrustedInstaller.", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
-            //}
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Lỗi khi khôi phục quyền sở hữu CMD: {ex.Message}", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-
-
-        private void SetRegistryCmdStatus(bool disable)
-        {
-            try
-            {
-                string keyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System";
-                string valueName = "DisableCMD";
-                int newValue = disable ? 1 : 0;
-
-                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(keyPath, true))
-                {
-                    if (key != null)
-                    {
-                        key.SetValue(valueName, newValue, RegistryValueKind.DWord);
+                        // Save the image to the file using ImageSharp
+                        image.Save(fileName);
                     }
                 }
+
+                // Hiển thị thông báo thành công trên UI thread
+                Dispatcher.Invoke(() =>
+                {
+                    System.Windows.MessageBox.Show($"Screenshot saved to {fileName}", "Screenshot", MessageBoxButton.OK, MessageBoxImage.Information);
+                });
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Lỗi khi cập nhật trạng thái CMD trong registry: {ex.Message}", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error);
+                // Hiển thị thông báo lỗi trên UI thread
+                Dispatcher.Invoke(() =>
+                {
+                    System.Windows.MessageBox.Show($"Error capturing screenshot: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                });
+            }
+        }
+
+        // Helper method to convert a System.Drawing.Image to SixLabors.ImageSharp.Image
+        private SixLabors.ImageSharp.Image ConvertToImageSharpImage(System.Drawing.Bitmap bitmap)
+        {
+            using (var memoryStream = new MemoryStream())
+            {
+                // Save the Bitmap to a MemoryStream in PNG format
+                bitmap.Save(memoryStream, System.Drawing.Imaging.ImageFormat.Png);
+
+                // Reset the memory stream's position to 0 to read the data from the beginning
+                memoryStream.Position = 0;
+
+                // Load the image data into a SixLabors.ImageSharp.Image
+                return SixLabors.ImageSharp.Image.Load(memoryStream);
+            }
+        }
+
+
+        private void DeleteOldScreenshots(string folderPath)
+        {
+            try
+            {
+                var files = Directory.GetFiles(folderPath);
+                foreach (var file in files)
+                {
+                    FileInfo fileInfo = new FileInfo(file);
+                    if (fileInfo.CreationTime < DateTime.Now.AddDays(-7))
+                    {
+                        fileInfo.Delete();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Error deleting old screenshots: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -298,7 +282,7 @@ namespace WpfApp1.Views
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Lỗi khi chạy lệnh PowerShell: {ex.Message}", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error);
+                System.Windows.MessageBox.Show($"Lỗi khi chạy lệnh PowerShell: {ex.Message}", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error);
             }
 
             return string.Empty;
@@ -311,7 +295,7 @@ namespace WpfApp1.Views
             {
                 if (!IsUserAdministrator())
                 {
-                    MessageBox.Show("Vui lòng chạy ứng dụng với quyền Administrator.", "Quyền bị từ chối", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    System.Windows.MessageBox.Show("Vui lòng chạy ứng dụng với quyền Administrator.", "Quyền bị từ chối", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
@@ -339,7 +323,7 @@ namespace WpfApp1.Views
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Lỗi: {ex.Message}", "Không thể thực thi lệnh PowerShell", MessageBoxButton.OK, MessageBoxImage.Error);
+                System.Windows.MessageBox.Show($"Lỗi: {ex.Message}", "Không thể thực thi lệnh PowerShell", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -355,7 +339,7 @@ namespace WpfApp1.Views
             {
                 if (!IsUserAdministrator())
                 {
-                    MessageBox.Show("Vui lòng chạy ứng dụng với quyền Administrator.", "Quyền bị từ chối", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    System.Windows.MessageBox.Show("Vui lòng chạy ứng dụng với quyền Administrator.", "Quyền bị từ chối", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
@@ -367,7 +351,7 @@ namespace WpfApp1.Views
                     CreateNoWindow = true,
                     WindowStyle = ProcessWindowStyle.Hidden,
                     UseShellExecute = true,
-                    WorkingDirectory = @"C:\Windows\System32"  
+                    WorkingDirectory = @"C:\Windows\System32"
                 };
 
                 using (Process process = Process.Start(pro))
@@ -377,22 +361,22 @@ namespace WpfApp1.Views
                         process.WaitForExit();
                         if (process.ExitCode != 0)
                         {
-                            MessageBox.Show("Lệnh thực thi thất bại. Mã thoát: " + process.ExitCode, "Lỗi thực thi", MessageBoxButton.OK, MessageBoxImage.Error);
+                            System.Windows.MessageBox.Show("Lệnh thực thi thất bại. Mã thoát: " + process.ExitCode, "Lỗi thực thi", MessageBoxButton.OK, MessageBoxImage.Error);
                         }
                         else
                         {
-                            MessageBox.Show("Lệnh đã được thực thi thành công.", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
+                            System.Windows.MessageBox.Show("Lệnh đã được thực thi thành công.", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
                         }
                     }
                     else
                     {
-                        MessageBox.Show("Không thể khởi động quá trình.", "Lỗi khởi động quá trình", MessageBoxButton.OK, MessageBoxImage.Error);
+                        System.Windows.MessageBox.Show("Không thể khởi động quá trình.", "Lỗi khởi động quá trình", MessageBoxButton.OK, MessageBoxImage.Error);
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Lỗi: {ex.Message}", "Không thể thực thi lệnh", MessageBoxButton.OK, MessageBoxImage.Error);
+                System.Windows.MessageBox.Show($"Lỗi: {ex.Message}", "Không thể thực thi lệnh", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -407,7 +391,7 @@ namespace WpfApp1.Views
 
         private void LogoutButton_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("You have logged out.");
+            System.Windows.MessageBox.Show("You have logged out.");
             MainWindow mainWindow = new MainWindow();
             mainWindow.Show();
             this.Close();
@@ -415,7 +399,7 @@ namespace WpfApp1.Views
 
         private void UserNameTextBlock_Click(object sender, MouseButtonEventArgs e)
         {
-            MessageBox.Show("UserName clicked.");
+            System.Windows.MessageBox.Show("UserName clicked.");
             LogoutButton.Visibility = Visibility.Visible;
         }
 

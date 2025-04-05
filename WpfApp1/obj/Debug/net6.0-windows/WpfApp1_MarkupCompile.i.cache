@@ -4,16 +4,16 @@
 winexe
 C#
 .cs
-C:\Users\Locbm\OneDrive\Desktop\TestWPF\WpfApp2_Identity\WpfApp1\obj\Debug\net6.0-windows\
+C:\Users\Administrator\Desktop\Code\TechVsWpf\WpfApp1\obj\Debug\net6.0-windows\
 WpfApp1
 none
 false
-TRACE;DEBUG;NET;NET6_0;NETCOREAPP
-C:\Users\Locbm\OneDrive\Desktop\TestWPF\WpfApp2_Identity\WpfApp1\App.xaml
+TRACE;DEBUG;NET;NET6_0;NETCOREAPP;WINDOWS;WINDOWS7_0;NET5_0_OR_GREATER;NET6_0_OR_GREATER;NETCOREAPP3_0_OR_GREATER;NETCOREAPP3_1_OR_GREATER;WINDOWS7_0_OR_GREATER
+C:\Users\Administrator\Desktop\Code\TechVsWpf\WpfApp1\App.xaml
 5-726334366
 1-533907992
 15666795384
-226-964642352
+229-234033575
 Views\ChangeDateTimeWindow.xaml;Views\ChangePasswordWindow.xaml;Views\MainWindow.xaml;Views\RegisterUser.xaml;Views\SaveCodeCMD.xaml;
 
 False
